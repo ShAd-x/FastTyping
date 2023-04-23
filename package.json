@@ -1,7 +1,7 @@
 {
   "name": "fasttyping",
   "displayName": "FastTyping",
-  "description": "",
+  "description": "VSCode extension for a better typing comfort. Type faster.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.77.0"
