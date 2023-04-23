@@ -2,6 +2,7 @@
 
 # ToDos for the next release (sorted by priority order) :
     - [ ] Add shortcuts in user settings
+    - [ ] Shortcuts by language
     - [ ] Add a maximum time for each shortcut
     - [ ] Add a command to open the user settings
     - [ ] Add a command to disable the extension
