@@ -3,7 +3,7 @@
   "displayName": "FastTyping",
   "description": "VSCode extension for a better typing comfort. Type faster.",
   "publisher": "ShAdDev",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/ShAd-x/FastTyping"

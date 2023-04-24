@@ -2,14 +2,15 @@ import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
 	let editor = vscode.window.activeTextEditor;
-	if (!editor) {
-		return;
-	}
-
-	let lastTwoChars = '';
-	let countSelection = 0;
+	let lastTwoChars : string = '';
+	let countSelection : number = 0;
 
 	let disposable = vscode.workspace.onDidChangeTextDocument(event => {
+		editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			return;
+		}
+
         for (const change of event.contentChanges) {
 			// On ne modifie pas quand c'est sur plusieurs lignes
 			// Ou les copier/coller
@@ -23,16 +24,16 @@ export function activate(context: vscode.ExtensionContext) {
 				// console.log("[1] DEBUG : " + lastTwoChars);
 				if (lastTwoChars === '--') {
 					// console.log("[1] DEBUG START : " + change.range.start.translate(0, -1).character);
-					// console.log("[1] DEBUG END : " + change.range.end.translate(0, 1-countSelection).character);
-					const replaceRange = new vscode.Range(change.range.start.translate(0, -1), change.range.end.translate(0, 1-countSelection));
+					// console.log("[1] DEBUG END : " + change.range.end.translate(0, 1 - countSelection).character);
+					const replaceRange = new vscode.Range(change.range.start.translate(0, -1), change.range.end.translate(0, 1 - countSelection));
 					editor?.edit(edit => edit.replace(replaceRange, '->'));
 				}
 			}
         }
     });
 
-	let subOnDidChangeTextEditorSelection = vscode.window.onDidChangeTextEditorSelection(async function () {
-		let editor = vscode.window.activeTextEditor;
+	let subOnDidChangeTextEditorSelection = vscode.window.onDidChangeTextEditorSelection(async function (event) {
+		let editor = event.textEditor;
 		if (!editor) {
 			return;
 		}
