@@ -7,3 +7,8 @@
 ## [0.0.2] - 2023-04-24
 
 - Fix when changing the file 
+
+## [0.1.0] - 2023-05-06
+
+- Added shortcuts per language in user settings
+- Added command to open json user settings
