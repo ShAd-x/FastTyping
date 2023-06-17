@@ -7,6 +7,20 @@ export function activate(context: vscode.ExtensionContext) {
 	let countSelection : number = 0;
 	let fileExtension : string | undefined = editor?.document.fileName.split('.').pop();
 
+	// Récupération des paramètres utilisateur
+	const config = vscode.workspace.getConfiguration();
+	console.log(config);
+	// Récupération des paramètres par défaut
+	const defaultSettings = context.extension.packageJSON.contributes.configuration.properties;
+  
+	// Ajout des paramètres par défaut manquants dans les paramètres utilisateur
+	for (const key in defaultSettings) {
+	  	if (defaultSettings.hasOwnProperty(key) && !config.has(key)) {
+			console.log(`Ajout du paramètre par défaut ${key} dans les paramètres utilisateur`);
+			config.update(key, defaultSettings[key].default, true);
+	  	}
+	}
+
 	let disposable = vscode.workspace.onDidChangeTextDocument(event => {
 		editor = vscode.window.activeTextEditor;
 		if (!editor) {
