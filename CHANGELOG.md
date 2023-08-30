@@ -12,3 +12,8 @@
 
 - Added shortcuts per language in user settings
 - Added command to open json user settings
+
+## [0.2.0] - 2023-08-30
+
+- Added support for user shortcuts
+- File extension shortcuts are now prioritized over common shortcuts
