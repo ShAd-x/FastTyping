@@ -3,23 +3,10 @@ import * as vscode from 'vscode';
 export function activate(context: vscode.ExtensionContext) {
 	let editor : vscode.TextEditor | undefined = vscode.window.activeTextEditor;
 	let shortcuts : vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration('fasttyping.shortcuts');
+	// console.log("DEBUG : shortcuts : " + JSON.stringify(shortcuts));
 	let lastTwoChars : string = '';
 	let countSelection : number = 0;
 	let fileExtension : string | undefined = editor?.document.fileName.split('.').pop();
-
-	// Récupération des paramètres utilisateur
-	const config = vscode.workspace.getConfiguration();
-	console.log(config);
-	// Récupération des paramètres par défaut
-	const defaultSettings = context.extension.packageJSON.contributes.configuration.properties;
-  
-	// Ajout des paramètres par défaut manquants dans les paramètres utilisateur
-	for (const key in defaultSettings) {
-	  	if (defaultSettings.hasOwnProperty(key) && !config.has(key)) {
-			console.log(`Ajout du paramètre par défaut ${key} dans les paramètres utilisateur`);
-			config.update(key, defaultSettings[key].default, true);
-	  	}
-	}
 
 	let disposable = vscode.workspace.onDidChangeTextDocument(event => {
 		editor = vscode.window.activeTextEditor;
@@ -39,33 +26,17 @@ export function activate(context: vscode.ExtensionContext) {
 			if (lastTwoChars.length == 1) {
 				lastTwoChars = lastTwoChars + change.text;
 				// console.log("[1] DEBUG : " + lastTwoChars);
-	
-				Object.keys(shortcuts).forEach(key => {
-					let shortcut = shortcuts[key][lastTwoChars];
-					if (shortcut) {
-						// console.log(`Shortcut exists for ${key}: ${shortcut}`);
-						
-						// On a un raccourci pour cette extension de fichier
-						// Ou c'est un racourci global (et le raccourci n'existe pas pour le fichier)
-						// On vérifie aussi si l'extension est dans les clés de raccourcis sinon on peut pas
-						// vérifier si le raccourci pour l'extension existe
-						if (
-							key == fileExtension || 
-							(
-								key == 'common' &&
-									(
-										!shortcuts.hasOwnProperty(fileExtension!) ||
-										!JSON.stringify(shortcuts[fileExtension!]).includes(shortcut)
-									)
-							)
-						)  {
-							// console.log("[1] DEBUG START : " + change.range.start.translate(0, -1).character);
-							// console.log("[1] DEBUG END : " + change.range.end.translate(0, 1 - countSelection).character);
-							const replaceRange = new vscode.Range(change.range.start.translate(0, -1), change.range.end.translate(0, 1 - countSelection));
-							editor?.edit(edit => edit.replace(replaceRange, shortcut));
-						}
-					}
-				});
+
+				// On a un raccourci pour cette extension de fichier
+				if (fileExtension && shortcuts[fileExtension] && shortcuts[fileExtension][lastTwoChars]) {
+					makeShortcut(change, fileExtension);
+					return;
+				}
+
+				// On a un raccourci commun
+				if (shortcuts['common'][lastTwoChars]) {
+					makeShortcut(change, 'common');
+				}
 			}
         }
     });
@@ -109,10 +80,25 @@ export function activate(context: vscode.ExtensionContext) {
 
 	let subOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration(event => {
 		if (event.affectsConfiguration('fasttyping.shortcuts')) {
+			// console.log("DEBUG : shortcuts changed");
 		  	// Les raccourcis ont été modifiés
 		  	shortcuts = vscode.workspace.getConfiguration('fasttyping.shortcuts');
+			// console.log("DEBUG : shortcuts : " + JSON.stringify(shortcuts));
 		}
 	});
+
+	/**
+	 * Remplace le texte par le raccourci
+	 *
+	 * @param change Event de modification du texte
+	 * @param key Clé du raccourci
+	 */
+	function makeShortcut(change: vscode.TextDocumentContentChangeEvent, key: string) {
+		// console.log("[1] DEBUG START : " + change.range.start.translate(0, -1).character);
+		// console.log("[1] DEBUG END : " + change.range.end.translate(0, 1 - countSelection).character);
+		const replaceRange = new vscode.Range(change.range.start.translate(0, -1), change.range.end.translate(0, 1 - countSelection));
+		editor?.edit(edit => edit.replace(replaceRange, shortcuts[key][lastTwoChars]));
+	}
 
 	// Enregistrer la commande pour ouvrir la configuration de l'extension
 	context.subscriptions.push(
