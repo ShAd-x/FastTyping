@@ -3,7 +3,7 @@
   "displayName": "FastTyping",
   "description": "VSCode extension for a better typing comfort. Type faster.",
   "publisher": "ShAdDev",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/ShAd-x/FastTyping"
@@ -18,32 +18,31 @@
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
-      "type": "object",
       "title": "FastTyping",
       "properties": {
-          "fasttyping.shortcuts": {
-              "title": "Shortcuts",
-              "type": "object",
-              "default": {
-                  "common": {
-                      "--": "->",
-                      "àà": "@",
-                      "ùù": "%"
-                  },
-                  "php" : {
-                      ";;":  ".",
-                      "**": "{}"
-                  }
-                 
-              },
-              "description": ""
-          }
+        "fasttyping.shortcuts": {
+          "title": "Shortcuts",
+          "type": "object",
+          "default": {
+            "common": {
+                "--": "->",
+                "àà": "@",
+                "ùù": "%"
+            },
+            "php" : {
+                ";;":  ".",
+                "**": "{}"
+            }
+              
+          },
+          "description": "The shortcuts you want to use."
+        }
       }
     },
     "commands": [
       {
-          "command": "fasttyping.openConfig",
-          "title": "FastTyping: Open Extension Configuration"
+        "command": "fasttyping.openConfig",
+        "title": "FastTyping: Open Extension Configuration"
       }
   ]
   },
