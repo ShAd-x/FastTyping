@@ -1,120 +1,122 @@
 import * as vscode from 'vscode';
 
-export function activate(context: vscode.ExtensionContext) {
-	let editor : vscode.TextEditor | undefined = vscode.window.activeTextEditor;
-	let shortcuts : vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration('fasttyping.shortcuts');
-	// console.log("DEBUG : shortcuts : " + JSON.stringify(shortcuts));
-	let lastTwoChars : string = '';
-	let countSelection : number = 0;
-	let fileExtension : string | undefined = editor?.document.fileName.split('.').pop();
+type Shortcuts = Record<string, Record<string, string>>;
 
-	let disposable = vscode.workspace.onDidChangeTextDocument(event => {
+export function activate(context: vscode.ExtensionContext) {
+	let editor: vscode.TextEditor | undefined = vscode.window.activeTextEditor;
+	let lastTwoChars = '';
+	let countSelection = 0;
+	let fileExtension: string | undefined = editor?.document.fileName.split('.').pop();
+	let shortcuts: Shortcuts = getEffectiveShortcuts();
+
+	// Mise à jour des raccourcis si modifiés dans les paramètres
+	const subOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((event) => {
+		if (event.affectsConfiguration('fasttyping.shortcuts')) {
+			shortcuts = getEffectiveShortcuts();
+		}
+	});
+
+	type ShortcutMap = Record<string, Record<string, string>>;
+	function getEffectiveShortcuts(): ShortcutMap {
+		const config = vscode.workspace.getConfiguration('fasttyping');
+		const inspected = config.inspect<ShortcutMap>('shortcuts');
+
+		// Récupère la valeur utilisateur (priorité : workspace > global)
+		const userShortcuts = inspected?.workspaceValue || inspected?.globalValue;
+
+		// Si aucun paramètre utilisateur n’est défini, on fallback sur les defaults
+		if (!userShortcuts || Object.keys(userShortcuts).length === 0) {
+			return inspected?.defaultValue || {};
+		}
+
+		return userShortcuts;
+	}
+
+	// Ecoute des modifications de texte
+	const disposable = vscode.workspace.onDidChangeTextDocument((event) => {
 		editor = vscode.window.activeTextEditor;
-		if (!editor) {
+		if (!editor || editor.document !== event.document) {
 			return;
 		}
 
-        for (const change of event.contentChanges) {
-			// On ne modifie pas quand c'est sur plusieurs lignes
-			// Ou les copier/coller
-			if (change.text.length != 1) {
-				// console.log("ERROR : change.text.length != 1");
+		for (const change of event.contentChanges) {
+			if (change.text.length !== 1) {
 				lastTwoChars = '';
 				return;
 			}
 
-			if (lastTwoChars.length == 1) {
-				lastTwoChars = lastTwoChars + change.text;
-				// console.log("[1] DEBUG : " + lastTwoChars);
+			if (lastTwoChars.length === 1) {
+				lastTwoChars += change.text;
 
-				// On a un raccourci pour cette extension de fichier
-				if (fileExtension && shortcuts[fileExtension] && shortcuts[fileExtension][lastTwoChars]) {
-					makeShortcut(change, fileExtension);
+				const scopedShortcuts = shortcuts[fileExtension ?? ''] ?? {};
+				const replacement = scopedShortcuts[lastTwoChars] ?? shortcuts['common']?.[lastTwoChars];
+
+				if (replacement) {
+					applyShortcut(change, replacement);
 					return;
 				}
-
-				// On a un raccourci commun
-				if (shortcuts['common'][lastTwoChars]) {
-					makeShortcut(change, 'common');
-				}
+			} else {
+				lastTwoChars = change.text;
 			}
-        }
-    });
+		}
+	});
 
-	let subOnDidChangeTextEditorSelection = vscode.window.onDidChangeTextEditorSelection(async function (event) {
+	// Écoute des sélections et déplacement du curseur
+	const subOnDidChangeSelection = vscode.window.onDidChangeTextEditorSelection((event) => {
 		editor = event.textEditor;
 		if (!editor) {
 			return;
 		}
 
-		// On recupere la selection
-		let selection : vscode.Selection = editor.selection;
+		const selection = editor.selection;
 		fileExtension = editor.document.fileName.split('.').pop();
-
 		countSelection = 0;
-		// On a une selection donc on recupere le nombre de caractere selectionné
-		// Pour que le remplacement se fasse correctement sans supprimer le reste de la ligne
+
 		if (!selection.isEmpty) {
-			// Compte le nombre de caractere selectionné sur la même ligne
-			if (selection.start.line == selection.end.line) {
-				// console.log("DEBUG : " + (selection.end.character - selection.start.character));
+			if (selection.start.line === selection.end.line) {
 				countSelection = selection.end.character - selection.start.character;
 			} else {
-				// Si on a une selection sur plusieurs ligne, on annule le remplacement car ça ne marche pas
-				// console.log("ERROR : selection.start.line != selection.end.line");
 				lastTwoChars = '';
 				return;
 			}
 		}
-		
-		// Si on est au début de la ligne il n'y a pas de caractere avant
-		if (selection.start.character == 0) {
-			// console.log("ERROR : selection.start.character == 0");
+
+		if (selection.start.character === 0) {
 			lastTwoChars = '';
 			return;
 		}
-		let charBeforeSelection = editor.document.getText(new vscode.Range(selection.start.translate(0, -1), selection.start));
-		lastTwoChars = charBeforeSelection;
-		// console.log("[MOVED] DEBUG : " + charBeforeSelection);
+
+		const charBefore = editor.document.getText(
+			new vscode.Range(selection.start.translate(0, -1), selection.start)
+		);
+		lastTwoChars = charBefore;
 	});
 
-	let subOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration(event => {
-		if (event.affectsConfiguration('fasttyping.shortcuts')) {
-			// console.log("DEBUG : shortcuts changed");
-		  	// Les raccourcis ont été modifiés
-		  	shortcuts = vscode.workspace.getConfiguration('fasttyping.shortcuts');
-			// console.log("DEBUG : shortcuts : " + JSON.stringify(shortcuts));
+	// Fonction de remplacement du raccourci
+	function applyShortcut(change: vscode.TextDocumentContentChangeEvent, replacement: string) {
+		if (!editor) {
+			return;
 		}
-	});
 
-	/**
-	 * Remplace le texte par le raccourci
-	 *
-	 * @param change Event de modification du texte
-	 * @param key Clé du raccourci
-	 */
-	function makeShortcut(change: vscode.TextDocumentContentChangeEvent, key: string) {
-		// console.log("[1] DEBUG START : " + change.range.start.translate(0, -1).character);
-		// console.log("[1] DEBUG END : " + change.range.end.translate(0, 1 - countSelection).character);
-		const replaceRange = new vscode.Range(change.range.start.translate(0, -1), change.range.end.translate(0, 1 - countSelection));
-		editor?.edit(edit => edit.replace(replaceRange, shortcuts[key][lastTwoChars]));
+		const start = change.range.start.translate(0, -1);
+		const end = change.range.end.translate(0, 1 - countSelection);
+		const replaceRange = new vscode.Range(start, end);
+
+		editor.edit((editBuilder) => {
+			editBuilder.replace(replaceRange, replacement);
+		});
 	}
 
-	// Enregistrer la commande pour ouvrir la configuration de l'extension
-	context.subscriptions.push(
-        vscode.commands.registerCommand('fasttyping.openConfig', openConfig)
-    );
+	// Commande pour ouvrir le fichier settings.json
+	const openConfig = vscode.commands.registerCommand('fasttyping.openConfig', () => {
+		vscode.commands.executeCommand('workbench.action.openSettingsJson');
+	});
 
-    context.subscriptions.push(disposable);
-	context.subscriptions.push(subOnDidChangeTextEditorSelection);
+	// Enregistrement des subscriptions
+	context.subscriptions.push(disposable);
+	context.subscriptions.push(subOnDidChangeSelection);
 	context.subscriptions.push(subOnDidChangeConfiguration);
-}
-
-/**
- * Ouvre la configuration de l'extension dans les paramètres utilisateur
- */
-function openConfig() {
-	vscode.commands.executeCommand('workbench.action.openSettingsJson', '@ext:fasttyping');
+	context.subscriptions.push(openConfig);
 }
 
 export function deactivate() {}
