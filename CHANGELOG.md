@@ -17,3 +17,10 @@
 
 - Added support for user shortcuts
 - File extension shortcuts are now prioritized over common shortcuts
+
+## [0.3.0] - 2025-04-23
+
+- Refactored code
+- Updated packages
+- Updated README
+- Fix when deleting default shortcuts not working
