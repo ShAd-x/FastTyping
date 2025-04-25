@@ -8,6 +8,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let maxShortcutLength = vscode.workspace.getConfiguration('fasttyping').get<number>('maxShortcutLength', 10);
 	let fileExtension: string | undefined = editor?.document.fileName.split('.').pop();
 	let shortcuts: Shortcuts = getEffectiveShortcuts();
+	let countSelection = 0;
 
 	// Mise à jour des raccourcis si modifiés dans les paramètres
 	const subOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((event) => {
@@ -101,6 +102,37 @@ export function activate(context: vscode.ExtensionContext) {
 		accumulatedChars = '';
 	}
 
+	// Écoute des sélections et déplacement du curseur
+	const subOnDidChangeSelection = vscode.window.onDidChangeTextEditorSelection((event) => {
+		editor = event.textEditor;
+		if (!editor) {
+			return;
+		}
+
+		const selection = editor.selection;
+		fileExtension = editor.document.fileName.split('.').pop();
+		countSelection = 0;
+
+		if (!selection.isEmpty) {
+			if (selection.start.line === selection.end.line) {
+				countSelection = selection.end.character - selection.start.character;
+			} else {
+				accumulatedChars = '';
+				return;
+			}
+		}
+
+		if (selection.start.character === 0) {
+			accumulatedChars = '';
+			return;
+		}
+
+		const charBefore = editor.document.getText(
+			new vscode.Range(selection.start.translate(0, -1), selection.start)
+		);
+		accumulatedChars = charBefore;
+	});
+
 	// Commande pour ouvrir le fichier settings.json
 	const openConfig = vscode.commands.registerCommand('fasttyping.openConfig', () => {
 		vscode.commands.executeCommand('workbench.action.openSettingsJson');
@@ -109,6 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Enregistrement des subscriptions
 	context.subscriptions.push(disposable);
 	context.subscriptions.push(subOnDidChangeConfiguration);
+	context.subscriptions.push(subOnDidChangeSelection);
 	context.subscriptions.push(openConfig);
 }
 
