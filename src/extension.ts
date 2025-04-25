@@ -4,8 +4,8 @@ type Shortcuts = Record<string, Record<string, string>>;
 
 export function activate(context: vscode.ExtensionContext) {
 	let editor: vscode.TextEditor | undefined = vscode.window.activeTextEditor;
-	let lastTwoChars = '';
-	let countSelection = 0;
+	let accumulatedChars = '';
+	let maxShortcutLength = vscode.workspace.getConfiguration('fasttyping').get<number>('maxShortcutLength', 10);
 	let fileExtension: string | undefined = editor?.document.fileName.split('.').pop();
 	let shortcuts: Shortcuts = getEffectiveShortcuts();
 
@@ -13,6 +13,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const subOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((event) => {
 		if (event.affectsConfiguration('fasttyping.shortcuts')) {
 			shortcuts = getEffectiveShortcuts();
+		}
+		if (event.affectsConfiguration('fasttyping.maxShortcutLength')) {
+			maxShortcutLength = vscode.workspace.getConfiguration('fasttyping').get<number>('maxShortcutLength', 10);
 		}
 	});
 
@@ -41,70 +44,61 @@ export function activate(context: vscode.ExtensionContext) {
 
 		for (const change of event.contentChanges) {
 			if (change.text.length !== 1) {
-				lastTwoChars = '';
+				accumulatedChars = '';
 				return;
 			}
 
-			if (lastTwoChars.length === 1) {
-				lastTwoChars += change.text;
+			accumulatedChars += change.text;
 
-				const scopedShortcuts = shortcuts[fileExtension ?? ''] ?? {};
-				const replacement = scopedShortcuts[lastTwoChars] ?? shortcuts['common']?.[lastTwoChars];
+            // Limite la taille de la chaîne accumulée
+            if (accumulatedChars.length > maxShortcutLength) {
+                accumulatedChars = accumulatedChars.slice(-maxShortcutLength);
+            }
 
-				if (replacement) {
-					applyShortcut(change, replacement);
-					return;
-				}
-			} else {
-				lastTwoChars = change.text;
-			}
+            // Recherche du raccourci correspondant
+            const scopedShortcuts = shortcuts[fileExtension ?? ''] ?? {};
+            let replacement: string | undefined;
+
+            // Vérifie les raccourcis dans l'ordre décroissant de longueur
+            for (let i = accumulatedChars.length; i > 0; i--) {
+                const substring = accumulatedChars.slice(-i); // Extrait les derniers `i` caractères
+                replacement = scopedShortcuts[substring] ?? shortcuts['common']?.[substring];
+                if (replacement) {
+                    applyShortcut(change, replacement, i); // Applique le raccourci si trouvé
+                    return;
+                }
+            }
 		}
-	});
-
-	// Écoute des sélections et déplacement du curseur
-	const subOnDidChangeSelection = vscode.window.onDidChangeTextEditorSelection((event) => {
-		editor = event.textEditor;
-		if (!editor) {
-			return;
-		}
-
-		const selection = editor.selection;
-		fileExtension = editor.document.fileName.split('.').pop();
-		countSelection = 0;
-
-		if (!selection.isEmpty) {
-			if (selection.start.line === selection.end.line) {
-				countSelection = selection.end.character - selection.start.character;
-			} else {
-				lastTwoChars = '';
-				return;
-			}
-		}
-
-		if (selection.start.character === 0) {
-			lastTwoChars = '';
-			return;
-		}
-
-		const charBefore = editor.document.getText(
-			new vscode.Range(selection.start.translate(0, -1), selection.start)
-		);
-		lastTwoChars = charBefore;
 	});
 
 	// Fonction de remplacement du raccourci
-	function applyShortcut(change: vscode.TextDocumentContentChangeEvent, replacement: string) {
-		if (!editor) {
+	function applyShortcut(change: vscode.TextDocumentContentChangeEvent, replacement: string, shortcutLength: number) {
+		if (!editor) return;
+
+		const document = editor.document;
+
+		const cursorPos = change.range.end.translate(0, 1);
+
+		const cursorOffset = document.offsetAt(cursorPos);
+
+		if (cursorOffset < shortcutLength) {
+			console.error('Not enough characters before cursor to apply shortcut');
 			return;
 		}
 
-		const start = change.range.start.translate(0, -1);
-		const end = change.range.end.translate(0, 1 - countSelection);
+		const startOffset = cursorOffset - shortcutLength;
+		const start = document.positionAt(startOffset);
+		const end = cursorPos;
+
 		const replaceRange = new vscode.Range(start, end);
+		const textToReplace = document.getText(replaceRange);
+		console.log('Text to replace:', textToReplace);
 
 		editor.edit((editBuilder) => {
 			editBuilder.replace(replaceRange, replacement);
 		});
+
+		accumulatedChars = '';
 	}
 
 	// Commande pour ouvrir le fichier settings.json
@@ -114,7 +108,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Enregistrement des subscriptions
 	context.subscriptions.push(disposable);
-	context.subscriptions.push(subOnDidChangeSelection);
 	context.subscriptions.push(subOnDidChangeConfiguration);
 	context.subscriptions.push(openConfig);
 }

@@ -14,12 +14,19 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
       "title": "FastTyping",
       "properties": {
+        "fasttyping.maxShortcutLength": {
+          "type": "number",
+          "default": 10,
+          "description": "Max length of characters to detect a shortcut."
+        },
         "fasttyping.shortcuts": {
           "title": "Shortcuts",
           "type": "object",
