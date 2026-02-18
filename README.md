@@ -4,6 +4,8 @@ FastTyping is a productivity extension for Visual Studio Code that helps you typ
 
 Whether you're coding or writing documentation, FastTyping helps reduce keystrokes and makes repetitive typing smoother.
 
+[![Tests](https://github.com/ShAd-x/FastTyping/actions/workflows/test.yml/badge.svg)](https://github.com/ShAd-x/FastTyping/actions/workflows/test.yml)
+
 ## 💡 Example Use Case
 
 - Typing `--` instantly becomes `->`
