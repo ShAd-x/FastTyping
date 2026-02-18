@@ -1,148 +1,191 @@
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+import { ConfigManager } from "./config";
+import { ShortcutEngine } from "./shortcutEngine";
 
-type Shortcuts = Record<string, Record<string, string>>;
+/**
+ * Main extension entry point.
+ * Orchestrates configuration management and shortcut detection.
+ * Handles VS Code event listeners and UI interactions.
+ */
+
+let configManager: ConfigManager;
+let shortcutEngine: ShortcutEngine;
+let currentFileLanguage: string = "";
+let lastProcessedCursorOffset: number = 0;
 
 export function activate(context: vscode.ExtensionContext) {
-	let editor: vscode.TextEditor | undefined = vscode.window.activeTextEditor;
-	let accumulatedChars = '';
-	let maxShortcutLength = vscode.workspace.getConfiguration('fasttyping').get<number>('maxShortcutLength', 10);
-	let fileExtension: string | undefined = editor?.document.fileName.split('.').pop();
-	let shortcuts: Shortcuts = getEffectiveShortcuts();
-	let countSelection = 0;
+  // Initialize configuration and shortcut engine
+  configManager = new ConfigManager();
+  shortcutEngine = new ShortcutEngine();
 
-	// Mise à jour des raccourcis si modifiés dans les paramètres
-	const subOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((event) => {
-		if (event.affectsConfiguration('fasttyping.shortcuts')) {
-			shortcuts = getEffectiveShortcuts();
-		}
-		if (event.affectsConfiguration('fasttyping.maxShortcutLength')) {
-			maxShortcutLength = vscode.workspace.getConfiguration('fasttyping').get<number>('maxShortcutLength', 10);
-		}
-	});
+  configManager.initialize();
+  initializeShortcutEngine();
 
-	type ShortcutMap = Record<string, Record<string, string>>;
-	function getEffectiveShortcuts(): ShortcutMap {
-		const config = vscode.workspace.getConfiguration('fasttyping');
-		const inspected = config.inspect<ShortcutMap>('shortcuts');
+  // Listen for configuration changes and update engine accordingly
+  configManager.onConfigChanged(() => {
+    initializeShortcutEngine();
+  });
 
-		// Récupère la valeur utilisateur (priorité : workspace > global)
-		const userShortcuts = inspected?.workspaceValue || inspected?.globalValue;
+  // Listen for text document changes
+  const onTextChangeDisposable = vscode.workspace.onDidChangeTextDocument(
+    (event) => {
+      const editor = vscode.window.activeTextEditor;
 
-		// Si aucun paramètre utilisateur n’est défini, on fallback sur les defaults
-		if (!userShortcuts || Object.keys(userShortcuts).length === 0) {
-			return inspected?.defaultValue || {};
-		}
+      // Ensure we're editing the correct document
+      if (!editor || editor.document !== event.document) {
+        return;
+      }
 
-		return userShortcuts;
-	}
+      // Handle each text change
+      for (const change of event.contentChanges) {
+        handleTextChange(change, editor);
+      }
+    },
+  );
 
-	// Ecoute des modifications de texte
-	const disposable = vscode.workspace.onDidChangeTextDocument((event) => {
-		editor = vscode.window.activeTextEditor;
-		if (!editor || editor.document !== event.document) {
-			return;
-		}
+  // Listen for cursor selection changes
+  const onSelectionChangeDisposable =
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+      const editor = event.textEditor;
+      if (!editor) {
+        return;
+      }
 
-		for (const change of event.contentChanges) {
-			if (change.text.length !== 1) {
-				accumulatedChars = '';
-				return;
-			}
+      // Update language scope based on current file
+      updateLanguageScope(editor);
 
-			accumulatedChars += change.text;
+      // Reset buffer on selection changes
+      handleSelectionChange(editor);
+    });
 
-            // Limite la taille de la chaîne accumulée
-            if (accumulatedChars.length > maxShortcutLength) {
-                accumulatedChars = accumulatedChars.slice(-maxShortcutLength);
-            }
+  // Register command to open settings
+  const openConfigDisposable = vscode.commands.registerCommand(
+    "fasttyping.openConfig",
+    () => {
+      vscode.commands.executeCommand("workbench.action.openSettingsJson");
+    },
+  );
 
-            // Recherche du raccourci correspondant
-            const scopedShortcuts = shortcuts[fileExtension ?? ''] ?? {};
-            let replacement: string | undefined;
+  // Register all disposables for cleanup
+  context.subscriptions.push(onTextChangeDisposable);
+  context.subscriptions.push(onSelectionChangeDisposable);
+  context.subscriptions.push(openConfigDisposable);
+}
 
-            // Vérifie les raccourcis dans l'ordre décroissant de longueur
-            for (let i = accumulatedChars.length; i > 0; i--) {
-                const substring = accumulatedChars.slice(-i); // Extrait les derniers `i` caractères
-                replacement = scopedShortcuts[substring] ?? shortcuts['common']?.[substring];
-                if (replacement) {
-                    applyShortcut(change, replacement, i); // Applique le raccourci si trouvé
-                    return;
-                }
-            }
-		}
-	});
+/**
+ * Initialize the shortcut engine with current configuration.
+ */
+function initializeShortcutEngine(): void {
+  const config = configManager.getConfig();
+  const editor = vscode.window.activeTextEditor;
 
-	// Fonction de remplacement du raccourci
-	function applyShortcut(change: vscode.TextDocumentContentChangeEvent, replacement: string, shortcutLength: number) {
-		if (!editor) return;
+  shortcutEngine.configure(
+    config.shortcuts,
+    config.maxShortcutLength,
+    currentFileLanguage || "common",
+  );
+}
 
-		const document = editor.document;
+/**
+ * Update the current file language scope.
+ * Extracts file extension from editor and updates engine accordingly.
+ */
+function updateLanguageScope(editor: vscode.TextEditor): void {
+  const fileName = editor.document.fileName;
+  const extension = fileName.split(".").pop() || "";
 
-		const cursorPos = change.range.end.translate(0, 1);
+  // Only update if scope changed
+  if (extension !== currentFileLanguage) {
+    currentFileLanguage = extension;
+    shortcutEngine.setScope(extension);
+  }
+}
 
-		const cursorOffset = document.offsetAt(cursorPos);
+/**
+ * Handle text document changes (character typing).
+ */
+function handleTextChange(
+  change: vscode.TextDocumentContentChangeEvent,
+  editor: vscode.TextEditor,
+): void {
+  // Only process single character inserts
+  if (change.text.length !== 1) {
+    shortcutEngine.clearBuffer();
+    return;
+  }
 
-		if (cursorOffset < shortcutLength) {
-			console.error('Not enough characters before cursor to apply shortcut');
-			return;
-		}
+  // Update the processed cursor offset to the new position after this character
+  lastProcessedCursorOffset = editor.document.offsetAt(change.range.end.translate(0, 1));
 
-		const startOffset = cursorOffset - shortcutLength;
-		const start = document.positionAt(startOffset);
-		const end = cursorPos;
+  // Add character to engine buffer
+  shortcutEngine.onCharacterTyped(change.text);
 
-		const replaceRange = new vscode.Range(start, end);
-		const textToReplace = document.getText(replaceRange);
-		console.log('Text to replace:', textToReplace);
+  // Try to find and apply matching shortcut
+  const match = shortcutEngine.findMatchingShortcut();
+  if (match) {
+    applyShortcutReplacement(editor, change, match.length, match.replacement);
+  }
+}
 
-		editor.edit((editBuilder) => {
-			editBuilder.replace(replaceRange, replacement);
-		});
+/**
+ * Handle cursor selection changes.
+ * Resets buffer only when cursor moves WITHOUT a character being typed.
+ * (Character typing also triggers cursor movement, but we handle that separately)
+ */
+function handleSelectionChange(editor: vscode.TextEditor): void {
+  const selection = editor.selection;
 
-		accumulatedChars = '';
-	}
+  // If there's a selection (multi-line or user-selected text), clear buffer
+  if (!selection.isEmpty) {
+    shortcutEngine.clearBuffer();
+    return;
+  }
 
-	// Écoute des sélections et déplacement du curseur
-	const subOnDidChangeSelection = vscode.window.onDidChangeTextEditorSelection((event) => {
-		editor = event.textEditor;
-		if (!editor) {
-			return;
-		}
+  // Check if cursor position changed since last character was processed
+  const currentOffset = editor.document.offsetAt(selection.active);
 
-		const selection = editor.selection;
-		fileExtension = editor.document.fileName.split('.').pop();
-		countSelection = 0;
+  // If cursor is exactly where we expect after the last typed character, don't reset
+  // This handles the onDidChangeTextEditorSelection that fires right after onDidChangeTextDocument
+  if (currentOffset === lastProcessedCursorOffset) {
+    return;
+  }
 
-		if (!selection.isEmpty) {
-			if (selection.start.line === selection.end.line) {
-				countSelection = selection.end.character - selection.start.character;
-			} else {
-				accumulatedChars = '';
-				return;
-			}
-		}
+  // If cursor moved somewhere else, clear buffer
+  shortcutEngine.clearBuffer();
+  lastProcessedCursorOffset = currentOffset;
+}
 
-		if (selection.start.character === 0) {
-			accumulatedChars = '';
-			return;
-		}
+/**
+ * Apply a shortcut replacement to the document.
+ */
+function applyShortcutReplacement(
+  editor: vscode.TextEditor,
+  change: vscode.TextDocumentContentChangeEvent,
+  shortcutLength: number,
+  replacement: string,
+): void {
+  const document = editor.document;
+  const cursorPos = change.range.end.translate(0, 1);
+  const cursorOffset = document.offsetAt(cursorPos);
 
-		const charBefore = editor.document.getText(
-			new vscode.Range(selection.start.translate(0, -1), selection.start)
-		);
-		accumulatedChars = charBefore;
-	});
+  // Ensure we have enough characters before cursor
+  if (cursorOffset < shortcutLength) {
+    return;
+  }
 
-	// Commande pour ouvrir le fichier settings.json
-	const openConfig = vscode.commands.registerCommand('fasttyping.openConfig', () => {
-		vscode.commands.executeCommand('workbench.action.openSettingsJson');
-	});
+  // Calculate range to replace
+  const startOffset = cursorOffset - shortcutLength;
+  const start = document.positionAt(startOffset);
+  const end = cursorPos;
+  const replaceRange = new vscode.Range(start, end);
 
-	// Enregistrement des subscriptions
-	context.subscriptions.push(disposable);
-	context.subscriptions.push(subOnDidChangeConfiguration);
-	context.subscriptions.push(subOnDidChangeSelection);
-	context.subscriptions.push(openConfig);
+  // Apply replacement
+  editor.edit((editBuilder) => {
+    editBuilder.replace(replaceRange, replacement);
+  });
+
+  // Clear buffer after successful replacement
+  shortcutEngine.clearBuffer();
 }
 
 export function deactivate() {}

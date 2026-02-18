@@ -3,7 +3,7 @@
   "displayName": "FastTyping",
   "description": "VSCode extension for a better typing comfort. Type faster.",
   "publisher": "ShAdDev",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/ShAd-x/FastTyping"
@@ -25,7 +25,8 @@
         "fasttyping.maxShortcutLength": {
           "type": "number",
           "default": 10,
-          "description": "Max length of characters to detect a shortcut."
+          "minimum": 1,
+          "description": "Maximum number of characters to scan for shortcut patterns. Allows shortcuts of any length (e.g., '&&' → 'and', '&&&' → 'test', 'asyncfn' → 'async function'). Higher values enable longer shortcuts but use slightly more memory."
         },
         "fasttyping.shortcuts": {
           "title": "Shortcuts",
@@ -61,16 +62,18 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.99.1",
-    "@types/glob": "^8.1.0",
+    "@types/glob": "^9.0.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^16.18.126",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "eslint": "^8.57.1",
-    "glob": "^8.1.0",
-    "mocha": "^10.8.2",
-    "typescript": "^4.9.5",
-    "@vscode/test-electron": "^2.5.2"
+    "@types/node": "^25.2.3",
+    "@types/sinon": "^17.0.2",
+    "@types/vscode": "^1.109.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^10.0.0",
+    "glob": "^13.0.5",
+    "mocha": "^11.7.5",
+    "sinon": "^17.0.1",
+    "typescript": "^5.9.3"
   }
 }
