@@ -10,7 +10,7 @@
     "url": "https://github.com/ShAd-x/FastTyping"
   },
   "engines": {
-    "vscode": "^1.99.1"
+    "vscode": "^1.109.0"
   },
   "categories": [
     "Other"
