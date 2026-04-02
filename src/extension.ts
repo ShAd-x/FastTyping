@@ -115,7 +115,9 @@ function handleTextChange(
   }
 
   // Update the processed cursor offset to the new position after this character
-  lastProcessedCursorOffset = editor.document.offsetAt(change.range.end.translate(0, 1));
+  lastProcessedCursorOffset = editor.document.offsetAt(
+    change.range.end.translate(0, 1),
+  );
 
   // Add character to engine buffer
   shortcutEngine.onCharacterTyped(change.text);
